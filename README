@@ -1,2 +1,1 @@
-TIEB (TanjaOS Installer Environment Builder) is a tool for building a TanjaOS installer initial ramdisk. And yes of couse it's open-source, because what project made by me isn't open-source?
-Make sure you place YOUR TanjaOS LiveCD ISO in this directory and make sure you name it 'livecd.iso'.
+TIEB (TanjaOS Installer Environment Builder) is a tool for building a TanjaOS installer initial ramdisk. And yes of couse it's open-source, because what project made by me isn't open-source? Also, make sure you place YOUR TanjaOS LiveCD ISO in this directory and make sure you name it 'livecd.iso'.
