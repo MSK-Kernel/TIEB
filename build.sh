@@ -5,6 +5,7 @@ echo && echo
 printf "Press ENTER to continue"
 read dummy
 
+mkdir -p rootfs/proc rootfs/sys
 cp -rf livecd.iso rootfs/etc/install.iso
 mkdir -p output/rootfs
 cd rootfs
