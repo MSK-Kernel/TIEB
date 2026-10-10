@@ -1,0 +1,220 @@
+#!/bin/sh
+
+LOG=/tmp/tanja-install.log
+
+: > "$LOG"
+
+run_silent()
+{
+"$@" >>"$LOG" 2>&1
+}
+
+error()
+{
+LAST=$(tail -n 8 "$LOG" 2>/dev/null)
+
+clear
+echo "TanjaOS Installer"
+echo
+echo "ERROR: $1"
+echo
+echo "Last log lines:"
+printf '%s\n' "$LAST"
+echo
+
+case "$2" in
+    retry)
+        printf "Press ENTER to return to the installer..."
+        read dummy
+        exec /bin/tanja
+        ;;
+    shell)
+        echo "Dropping to a shell."
+        echo "Log is at $LOG"
+        echo
+        printf "Press ENTER to continue..."
+        read dummy
+        clear
+        exec /bin/sh
+        ;;
+    *)
+        reboot -f
+        ;;
+esac
+
+}
+
+echo 0 > /proc/sys/kernel/printk 2>/dev/null || true
+
+clear
+
+echo "TanjaOS Installer"
+echo
+
+DISKS=""
+DISK_COUNT=0
+
+for disk in /dev/sd? /dev/hd? /dev/nvme?n?
+do
+[ -b "$disk" ] || continue
+
+FSTYPE=$(blkid -o value -s TYPE "$disk" 2>/dev/null)
+
+if [ "$FSTYPE" = "iso9660" ]; then
+    continue
+fi
+
+DISK_COUNT=$((DISK_COUNT + 1))
+
+name=$(basename "$disk")
+
+DISKS="$DISKS
+
+$DISK_COUNT|$name|$disk"
+done
+
+if [ "$DISK_COUNT" -eq 0 ]; then
+error "No disks detected." reboot
+fi
+
+echo "Available disks:"
+echo
+
+printf '%s\n' "$DISKS" | while IFS='|' read num name device
+do
+[ -n "$num" ] || continue
+echo "[$num] $device"
+done
+
+echo
+echo "Enter the number of the disk to install to."
+echo "For multiple disks, separate numbers with spaces."
+echo
+printf "Selection: "
+
+read SELECTION
+
+if [ -z "$SELECTION" ]; then
+error "No disk selected." retry
+fi
+
+SELECTED=""
+
+for number in $SELECTION
+do
+FOUND=0
+
+while IFS='|' read num name device
+do
+    [ -n "$num" ] || continue
+
+    if [ "$number" = "$num" ]; then
+        SELECTED="$SELECTED $device"
+        FOUND=1
+        break
+    fi
+done <<EOF
+
+$DISKS
+EOF
+
+if [ "$FOUND" -eq 0 ]; then
+    error "Invalid disk selection: $number" retry
+fi
+
+done
+
+if [ -z "$SELECTED" ]; then
+error "No valid disk selected." retry
+fi
+
+echo
+echo "TanjaOS will be installed to:"
+
+for DEVICE in $SELECTED
+do
+echo "  $DEVICE"
+done
+
+echo
+echo "WARNING: This will ERASE ALL data on selected disk(s)!"
+printf "Continue with installation? [y/N]: "
+
+read ANSWER
+
+case "$ANSWER" in
+y|Y|yes|YES)
+;;
+*)
+clear
+exec /bin/tanja
+;;
+esac
+
+for DEVICE in $SELECTED
+do
+if [ ! -b "$DEVICE" ]; then
+error "Device $DEVICE does not exist." shell
+fi
+
+echo "Installing TanjaOS to $DEVICE..."
+echo
+
+echo "Creating installation image..."
+
+run_silent dd \
+    if=/dev/zero \
+    of=/etc/install.img \
+    bs=1M \
+    count=6
+
+if [ $? -ne 0 ]; then
+    error "Failed to create installation image." shell
+fi
+
+echo "Installation image created."
+echo
+
+echo "Preparing installation image..."
+
+run_silent dd \
+    if=/etc/install.iso \
+    of=/etc/install.img \
+    conv=notrunc
+
+if [ $? -ne 0 ]; then
+    error "Failed to prepare installation image." shell
+fi
+
+echo "Installation image prepared."
+echo
+
+echo "Installing TanjaOS to $DEVICE..."
+
+if ! run_silent dd \
+    if=/etc/install.img \
+    of="$DEVICE" \
+    bs=4M
+then
+    error "Failed to install TanjaOS to $DEVICE." shell
+fi
+
+sync
+
+echo
+echo "Installation to $DEVICE complete."
+
+done
+
+rm -f /etc/install.img
+
+echo
+echo "Installation complete!"
+echo
+echo "You may now remove the boot media."
+echo "Press ENTER to reboot."
+
+read dummy
+
+reboot -f
+
